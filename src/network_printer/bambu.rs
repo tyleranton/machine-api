@@ -17,7 +17,6 @@ use crate::{
 
 const BAMBU_URN: &str = "urn:bambulab-com:device:3dprinter:1";
 
-#[derive(Debug, Clone)]
 pub enum BambuModel {
     A1Mini,
     A1,
@@ -157,11 +156,11 @@ impl NetworkPrinters for Bambu {
                 continue;
             };
 
-            // A little extra validation: check the URN is a Bambu printer. This is currently only
-            // tested against the Bambu Lab X1 Carbon with AMS.
+            // A little extra validation: check the URN is a Bambu printer. This is currently
+            // tested against the Bambu Lab A1, P1S, and X1 Carbon.
             if urn != Some(BAMBU_URN.to_string()) {
                 tracing::warn!(
-                    "Printer doesn't appear to be an X1 Carbon: URN {:?} does not match {}",
+                    "Printer doesn't appear to be a Bambu Lab printer: URN {:?} does not match {}",
                     urn,
                     BAMBU_URN
                 );
@@ -199,14 +198,12 @@ impl NetworkPrinters for Bambu {
                 .unwrap_or(BambuModel::Unknown("Unknown".into()));
 
             // At this point, we have a valid (as long as the parsing above is strict enough lmao)
-            // collection of data that represents a Bambu X1 Carbon.
+            // collection of data that represents any Bambu Lab printer.
             let info = NetworkPrinterInfo {
                 hostname: Some(name),
                 ip,
                 port,
                 manufacturer: NetworkPrinterManufacturer::Bambu,
-                // We can hard code this for now as we check the URN above (and assume the URN is
-                // unique to the X1 carbon)
                 model: Some(model.to_string()),
                 serial: Some(serial.to_string()),
             };
