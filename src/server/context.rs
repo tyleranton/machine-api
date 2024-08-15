@@ -38,7 +38,7 @@ impl Context {
             // Add Bambu Lab backend.
             network_printers.insert(
                 NetworkPrinterManufacturer::Bambu,
-                Box::new(crate::network_printer::bambu_x1_carbon::BambuX1Carbon::new(
+                Box::new(crate::network_printer::bambu::Bambu::new(
                     bambulabs_config,
                 )),
             );

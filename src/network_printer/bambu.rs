@@ -15,14 +15,51 @@ use crate::{
     },
 };
 
-const BAMBU_X1_CARBON_URN: &str = "urn:bambulab-com:device:3dprinter:1";
+const BAMBU_URN: &str = "urn:bambulab-com:device:3dprinter:1";
 
-pub struct BambuX1Carbon {
+#[derive(Debug, Clone)]
+pub enum BambuModel {
+    A1Mini,
+    A1,
+    P1P,
+    P1S,
+    X1Carbon,
+    Unknown(String),
+}
+
+impl BambuModel {
+    fn from_code(code: &str) -> BambuModel {
+        match code {
+            "N1" => BambuModel::A1Mini,
+            "N2S" => BambuModel::A1,
+            "C11" => BambuModel::P1P,
+            "C12" => BambuModel::P1S,
+            "BL-P001" => BambuModel::X1Carbon,
+            _ => BambuModel::Unknown(code.to_string()),
+        }
+    }
+}
+
+impl std::fmt::Display for BambuModel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let output = match self {
+            BambuModel::A1Mini => "Bambu Lab A1 mini",
+            BambuModel::A1 => "Bambu Lab A1",
+            BambuModel::P1P => "Bambu Lab P1P",
+            BambuModel::P1S => "Bambu Lab P1S",
+            BambuModel::X1Carbon => "Bambu Lab X1 Carbon",
+            BambuModel::Unknown(code) => code,
+        };
+        write!(f, "{}", output)
+    }
+}
+
+pub struct Bambu {
     pub printers: DashMap<String, NetworkPrinterHandle>,
     pub config: BambuLabsConfig,
 }
 
-impl BambuX1Carbon {
+impl Bambu {
     pub fn new(config: &BambuLabsConfig) -> Self {
         Self {
             printers: DashMap::new(),
@@ -32,7 +69,7 @@ impl BambuX1Carbon {
 }
 
 #[async_trait::async_trait]
-impl NetworkPrinters for BambuX1Carbon {
+impl NetworkPrinters for Bambu {
     async fn discover(&self) -> anyhow::Result<()> {
         tracing::info!("Spawning Bambu discovery task");
 
@@ -77,6 +114,7 @@ impl NetworkPrinters for BambuX1Carbon {
             }
 
             let mut urn = None;
+            let mut model_code = None;
             let mut name = None;
             let mut ip: Option<IpAddr> = None;
             let mut serial = None;
@@ -104,6 +142,7 @@ impl NetworkPrinters for BambuX1Carbon {
 
                 match token {
                     "Location" => ip = Some(rest.parse().expect("Bad IP")),
+                    "DevModel.bambu.com" => model_code = Some(rest.to_owned()),
                     "DevName.bambu.com" => name = Some(rest.to_owned()),
                     "USN" => serial = Some(rest.to_owned()),
                     "NT" => urn = Some(rest.to_owned()),
@@ -120,11 +159,11 @@ impl NetworkPrinters for BambuX1Carbon {
 
             // A little extra validation: check the URN is a Bambu printer. This is currently only
             // tested against the Bambu Lab X1 Carbon with AMS.
-            if urn != Some(BAMBU_X1_CARBON_URN.to_string()) {
+            if urn != Some(BAMBU_URN.to_string()) {
                 tracing::warn!(
                     "Printer doesn't appear to be an X1 Carbon: URN {:?} does not match {}",
                     urn,
-                    BAMBU_X1_CARBON_URN
+                    BAMBU_URN
                 );
 
                 continue;
@@ -155,6 +194,10 @@ impl NetworkPrinters for BambuX1Carbon {
                 cloned_client.run().await.unwrap();
             });
 
+            let model = model_code
+                .map(|code| BambuModel::from_code(&code))
+                .unwrap_or(BambuModel::Unknown("Unknown".into()));
+
             // At this point, we have a valid (as long as the parsing above is strict enough lmao)
             // collection of data that represents a Bambu X1 Carbon.
             let info = NetworkPrinterInfo {
@@ -164,13 +207,13 @@ impl NetworkPrinters for BambuX1Carbon {
                 manufacturer: NetworkPrinterManufacturer::Bambu,
                 // We can hard code this for now as we check the URN above (and assume the URN is
                 // unique to the X1 carbon)
-                model: Some(String::from("Bambu Lab X1 Carbon")),
+                model: Some(model.to_string()),
                 serial: Some(serial.to_string()),
             };
 
             let handle = NetworkPrinterHandle {
                 info,
-                client: Arc::new(Box::new(BambuX1CarbonPrinter {
+                client: Arc::new(Box::new(BambuPrinter {
                     client: Arc::new(client),
                     slicer: Box::new(crate::slicer::orca::OrcaSlicer::new(config.slicer_config.clone())),
                 })),
@@ -194,12 +237,12 @@ impl NetworkPrinters for BambuX1Carbon {
     }
 }
 
-pub struct BambuX1CarbonPrinter {
+pub struct BambuPrinter {
     pub client: Arc<bambulabs::client::Client>,
     pub slicer: Box<dyn crate::slicer::Slicer>,
 }
 
-impl BambuX1CarbonPrinter {
+impl BambuPrinter {
     /// Get the latest status of the printer.
     pub fn get_status(&self) -> Result<Option<bambulabs::message::PushStatus>> {
         self.client.get_status()
@@ -224,7 +267,7 @@ impl BambuX1CarbonPrinter {
 }
 
 #[async_trait::async_trait]
-impl NetworkPrinter for BambuX1CarbonPrinter {
+impl NetworkPrinter for BambuPrinter {
     /// Get the status of a printer.
     async fn status(&self) -> Result<Message> {
         // Get the status of the printer.

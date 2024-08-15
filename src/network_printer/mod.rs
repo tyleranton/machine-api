@@ -1,6 +1,6 @@
 //! A trait for a printer on a network.
 
-pub mod bambu_x1_carbon;
+pub mod bambu;
 pub mod formlabs;
 
 use std::{fmt::Debug, net::IpAddr, sync::Arc};
